@@ -1,16 +1,33 @@
 {
-  "version": 2,
-  "buildCommand": "pnpm run build:prod",
-  "installCommand": "pnpm install --frozen-lockfile=false",
-  "outputDirectory": "artifacts/bsch/dist/public",
-  "functions": {
-    "api/index.ts": { "maxDuration": 60 }
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "api": {
+      "root": ".",
+      "framework": "express",
+      "entrypoint": "api/index.ts",
+      "buildCommand": "pnpm run build:api"
+    },
+    "frontend": {
+      "root": "artifacts/bsch",
+      "framework": "vite",
+      "buildCommand": "cd ../.. && pnpm run build:prod",
+      "outputDirectory": "dist/public"
+    }
   },
   "rewrites": [
-    { "source": "/api/:path*", "destination": "/api" },
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    {
+      "source": "/api/(.*)",
+      "destination": { "service": "api" }
+    },
+    {
+      "source": "/(.*)",
+      "destination": { "service": "frontend" }
+    }
   ],
   "headers": [
-    { "source": "/api/(.*)", "headers": [{ "key": "Cache-Control", "value": "no-store" }] }
+    {
+      "source": "/api/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "no-store" }]
+    }
   ]
 }
