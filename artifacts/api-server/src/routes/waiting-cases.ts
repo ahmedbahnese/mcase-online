@@ -1,0 +1,215 @@
+import { Router, type IRouter } from "express";
+import { eq, and, ne, SQL } from "drizzle-orm";
+import { db, waitingCasesTable, medicalCasesTable, departmentsTable, settingsTable } from "@workspace/db";
+import {
+  GetWaitingCasesQueryParams,
+  CreateWaitingCaseBody,
+  UpdateWaitingCaseParams,
+  UpdateWaitingCaseBody,
+  DeleteWaitingCaseParams,
+} from "@workspace/api-zod";
+import { logAction } from "./audit-logs";
+import { getCurrentUserName, requireFounder, requirePageAccess } from "../middleware/auth";
+import { sendAssessmentToConfiguredChannels } from "./messaging";
+
+const router: IRouter = Router();
+
+router.get("/waiting-cases", requirePageAccess("/waiting-cases"), async (req, res): Promise<void> => {
+  const query = GetWaitingCasesQueryParams.safeParse(req.query);
+  if (!query.success) {
+    res.status(400).json({ error: query.error.message });
+    return;
+  }
+
+  const conditions: SQL[] = [];
+  if (query.data.section != null) {
+    conditions.push(eq(waitingCasesTable.section, query.data.section as any));
+  }
+  if (query.data.status != null) {
+    conditions.push(eq(waitingCasesTable.status, query.data.status as any));
+  }
+
+  const cases = await db
+    .select()
+    .from(waitingCasesTable)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(waitingCasesTable.createdAt);
+
+  res.json(cases);
+});
+
+router.post("/waiting-cases", requirePageAccess("/waiting-cases", "edit"), async (req, res): Promise<void> => {
+  const normalizedBody = { ...(req.body ?? {}) } as Record<string, unknown>;
+  for (const key of ["medicalReport", "medicalReportName", "medicalReportData"]) {
+    if (normalizedBody[key] === null) delete normalizedBody[key];
+  }
+  const parsed = CreateWaitingCaseBody.safeParse(normalizedBody);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  const normalizedName = parsed.data.patientName.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+  const existingWaiting = await db.select({ id: waitingCasesTable.id, patientName: waitingCasesTable.patientName, section: waitingCasesTable.section }).from(waitingCasesTable).where(eq(waitingCasesTable.status, "waiting"));
+  const existingCases = await db.select({ id: medicalCasesTable.id, patientName: medicalCasesTable.patientName, departmentId: medicalCasesTable.departmentId }).from(medicalCasesTable).where(ne(medicalCasesTable.status, "discharged"));
+  const duplicateWaiting = existingWaiting.find(c => c.patientName.trim().replace(/\s+/g, " ").toLocaleLowerCase() === normalizedName);
+  const duplicateCase = existingCases.find(c => c.patientName.trim().replace(/\s+/g, " ").toLocaleLowerCase() === normalizedName);
+  if (duplicateWaiting || duplicateCase) {
+    const location = duplicateWaiting ? `قائمة الانتظار — ${duplicateWaiting.section === "servo" ? "السيرفو" : "الاستقبال"}` : (() => "أحد الأقسام")();
+    let departmentName = location;
+    if (duplicateCase) {
+      const [department] = await db.select({ name: departmentsTable.name }).from(departmentsTable).where(eq(departmentsTable.id, duplicateCase.departmentId));
+      departmentName = department?.name ?? location;
+    }
+    res.status(409).json({ error: `يوجد حالة بنفس الاسم: ${duplicateWaiting?.patientName ?? duplicateCase?.patientName} — مكانها: ${departmentName}` });
+    return;
+  }
+
+  const [{ id: newCaseId }] = await db.insert(waitingCasesTable).values({
+    patientName: parsed.data.patientName,
+    age: parsed.data.age ?? null,
+    address: (parsed.data as any).address ?? null,
+    emergencyNumber: (parsed.data as any).emergencyNumber ?? null,
+    fileNumber: (parsed.data as any).fileNumber ?? null,
+    diagnosis: parsed.data.diagnosis ?? null,
+    notes: (parsed.data as any).notes ?? null,
+    parentPhone: parsed.data.parentPhone ?? null,
+    nationalId: parsed.data.nationalId ?? null,
+    medicalReport: (parsed.data as any).medicalReport ?? null,
+    medicalReportName: (parsed.data as any).medicalReportName ?? null,
+    medicalReportData: (parsed.data as any).medicalReportData ?? null,
+    careType: parsed.data.careType as any,
+    centralRoomRequired: parsed.data.centralRoomRequired ?? false,
+    centralRoomCode: parsed.data.centralRoomCode ?? null,
+    artificialRespiration: (parsed.data.artificialRespiration as any) ?? "no",
+    section: (parsed.data.section as any) ?? "reception",
+    status: "waiting",
+  }).returning({ id: waitingCasesTable.id });
+
+  const [newCase] = await db.select().from(waitingCasesTable).where(eq(waitingCasesTable.id, newCaseId));
+
+  await logAction("إضافة لقائمة الانتظار", "waiting_case", newCase.id, newCase.patientName, `القسم: ${newCase.section}`, getCurrentUserName(req.headers.cookie));
+
+  const autoSend = await db.select({ value: settingsTable.value }).from(settingsTable).where(eq(settingsTable.key, "assessment_auto_send")).limit(1);
+  if (autoSend[0]?.value === "true") void sendAssessmentToConfiguredChannels(newCase).catch(() => undefined);
+
+  res.status(201).json(newCase);
+});
+
+router.patch("/waiting-cases/:id", requirePageAccess("/waiting-cases", "edit"), async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const params = UpdateWaitingCaseParams.safeParse({ id: parseInt(raw, 10) });
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const normalizedBody = { ...(req.body ?? {}) } as Record<string, unknown>;
+  for (const key of ["medicalReport", "medicalReportName", "medicalReportData"]) {
+    if (normalizedBody[key] === null) delete normalizedBody[key];
+  }
+  const body = UpdateWaitingCaseBody.safeParse(normalizedBody);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+
+  // Verify existence before updating
+  const [existing] = await db
+    .select({ id: waitingCasesTable.id, status: waitingCasesTable.status, patientName: waitingCasesTable.patientName })
+    .from(waitingCasesTable)
+    .where(eq(waitingCasesTable.id, params.data.id));
+
+  if (!existing) {
+    res.status(404).json({ error: "الحالة غير موجودة" });
+    return;
+  }
+
+  const extraData = req.body as any;
+  if (body.data.patientName !== undefined) {
+    const normalizedName = body.data.patientName.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+    const names = await db.select({ id: waitingCasesTable.id, patientName: waitingCasesTable.patientName, section: waitingCasesTable.section }).from(waitingCasesTable);
+    const duplicate = names.find(c => c.id !== params.data.id && c.patientName.trim().replace(/\s+/g, " ").toLocaleLowerCase() === normalizedName);
+    if (duplicate) {
+      res.status(409).json({ error: `يوجد حالة بنفس الاسم: ${duplicate.patientName} — مكانها: قائمة الانتظار (${duplicate.section === "servo" ? "السيرفو" : "الاستقبال"})` });
+      return;
+    }
+  }
+  if (extraData.exitReason === "transferred" && !String(extraData.transferDestination ?? "").trim()) {
+    res.status(400).json({ error: "اكتب اسم المستشفى المحول إليها" });
+    return;
+  }
+  const updates: Record<string, unknown> = { ...body.data, updatedAt: new Date() };
+  if (extraData.transferDestination !== undefined) updates.transferDestination = extraData.transferDestination?.trim() || null;
+  if (extraData.notes !== undefined) updates.notes = extraData.notes || null;
+  for (const key of ["medicalReport", "medicalReportName", "medicalReportData"]) {
+    if (extraData[key] !== undefined) updates[key] = extraData[key] || null;
+  }
+
+  // MySQL does not support .returning() — update then re-select
+  await db
+    .update(waitingCasesTable)
+    .set(updates)
+    .where(eq(waitingCasesTable.id, params.data.id));
+
+  const [updated] = await db
+    .select()
+    .from(waitingCasesTable)
+    .where(eq(waitingCasesTable.id, params.data.id));
+
+  // If admitting with a specific department, create or move the medical case.
+  // The lookup makes this idempotent when an older client already created the
+  // case before the waiting record was updated.
+  if (body.data.status === "admitted" && extraData.admitToDepartmentId && existing.status !== "admitted") {
+    try {
+      const normalizedName = updated.patientName.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+      const activeCases = await db.select({ id: medicalCasesTable.id, patientName: medicalCasesTable.patientName })
+        .from(medicalCasesTable).where(ne(medicalCasesTable.status, "discharged"));
+      const existingCase = activeCases.find(c => c.patientName.trim().replace(/\s+/g, " ").toLocaleLowerCase() === normalizedName);
+      if (existingCase) {
+        await db.update(medicalCasesTable).set({ departmentId: parseInt(extraData.admitToDepartmentId, 10), age: updated.age, diagnosis: updated.diagnosis, parentPhone: updated.parentPhone, nationalId: updated.nationalId, status: "active", updatedAt: new Date() }).where(eq(medicalCasesTable.id, existingCase.id));
+      } else {
+        await db.insert(medicalCasesTable).values({ patientName: updated.patientName, departmentId: parseInt(extraData.admitToDepartmentId, 10), age: updated.age, diagnosis: updated.diagnosis, parentPhone: updated.parentPhone, nationalId: updated.nationalId, caseType: updated.careType as any, artificialRespiration: updated.artificialRespiration as any, centralRoomRequired: updated.centralRoomRequired, status: "active" } as any);
+      }
+    } catch { /* non-critical */ }
+  }
+
+  if (body.data.status && body.data.status !== existing.status) {
+    const statusLabel: Record<string, string> = { admitted: "تم الدخول", cancelled: "إلغاء/تحويل" };
+    await logAction(
+      statusLabel[body.data.status] ?? "تحديث قائمة انتظار",
+      "waiting_case",
+      updated.id,
+      updated.patientName,
+      extraData.exitReason ? `السبب: ${extraData.exitReason}` : null,
+      getCurrentUserName(req.headers.cookie)
+    );
+  }
+
+  res.json(updated);
+});
+
+router.delete("/waiting-cases/:id", requireFounder, requirePageAccess("/waiting-cases", "edit"), async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const params = DeleteWaitingCaseParams.safeParse({ id: parseInt(raw, 10) });
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  // MySQL does not support .returning() — select first, then delete
+  const [toDelete] = await db
+    .select({ id: waitingCasesTable.id })
+    .from(waitingCasesTable)
+    .where(eq(waitingCasesTable.id, params.data.id));
+
+  if (!toDelete) {
+    res.status(404).json({ error: "الحالة غير موجودة" });
+    return;
+  }
+
+  await db.delete(waitingCasesTable).where(eq(waitingCasesTable.id, params.data.id));
+
+  res.json({ success: true });
+});
+
+export default router;

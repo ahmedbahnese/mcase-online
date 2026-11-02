@@ -1,0 +1,155 @@
+{
+  "name": "bsch-desktop",
+  "version": "2.7.0",
+  "description": "BSCH Hospital Case Management System - Desktop App",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "verify-sqlite": "node verify-native-sqlite.js",
+    "prepare-native": "node prepare-native-sqlite.js",
+    "rebuild-native": "node rebuild-native-sqlite.js",
+    "prebuild-win": "npm run prepare-native && npm run rebuild-native && npm run verify-sqlite",
+    "prebuild-installer": "npm run prepare-native && npm run rebuild-native && npm run verify-sqlite",
+    "prebuild-portable": "npm run prepare-native && npm run rebuild-native && npm run verify-sqlite",
+    "build-win": "electron-builder --win --ia32 --publish never",
+    "build-installer": "electron-builder --win nsis --ia32 --publish never",
+    "build-portable": "electron-builder --win portable --ia32 --publish never"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "22.3.27",
+    "electron-builder": "^25.0.0",
+    "electron-rebuild": "^3.2.9",
+    "prebuild-install": "^7.1.2"
+  },
+  "build": {
+    "appId": "com.bsch.hospital",
+    "productName": "BSCH Professional",
+    "copyright": "مستشفى الأطفال التخصصي بالبحيرة",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "error.html"
+    ],
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**/*.node"
+    ],
+    "extraResources": [
+      {
+        "from": "../artifacts/api-server/dist",
+        "to": "api-server/dist"
+      },
+      {
+        "from": "native/better-sqlite3",
+        "to": "api-server/node_modules/better-sqlite3"
+      },
+      {
+        "from": "../node_modules/.pnpm/bindings@1.5.0/node_modules/bindings",
+        "to": "api-server/node_modules/bindings"
+      },
+      {
+        "from": "../node_modules/.pnpm/file-uri-to-path@1.0.0/node_modules/file-uri-to-path",
+        "to": "api-server/node_modules/file-uri-to-path"
+      },
+      {
+        "from": "../node_modules/.pnpm/tesseract.js@5.1.1/node_modules/tesseract.js",
+        "to": "node_modules/tesseract.js"
+      },
+      {
+        "from": "../node_modules/.pnpm/tesseract.js-core@5.1.1/node_modules/tesseract.js-core",
+        "to": "node_modules/tesseract.js-core"
+      },
+      {
+        "from": "../node_modules/.pnpm/@tesseract.js-data+ara@1.0.0/node_modules/@tesseract.js-data/ara",
+        "to": "node_modules/@tesseract.js-data/ara"
+      },
+      {
+        "from": "../node_modules/.pnpm/bmp-js@0.1.0/node_modules/bmp-js",
+        "to": "node_modules/bmp-js"
+      },
+      {
+        "from": "../node_modules/.pnpm/idb-keyval@6.3.0/node_modules/idb-keyval",
+        "to": "node_modules/idb-keyval"
+      },
+      {
+        "from": "../node_modules/.pnpm/is-electron@2.2.2/node_modules/is-electron",
+        "to": "node_modules/is-electron"
+      },
+      {
+        "from": "../node_modules/.pnpm/is-url@1.2.4/node_modules/is-url",
+        "to": "node_modules/is-url"
+      },
+      {
+        "from": "../node_modules/.pnpm/node-fetch@2.7.0/node_modules/node-fetch",
+        "to": "node_modules/node-fetch"
+      },
+      {
+        "from": "../node_modules/.pnpm/whatwg-url@5.0.0/node_modules/whatwg-url",
+        "to": "node_modules/whatwg-url"
+      },
+      {
+        "from": "../node_modules/.pnpm/webidl-conversions@3.0.1/node_modules/webidl-conversions",
+        "to": "node_modules/webidl-conversions"
+      },
+      {
+        "from": "../node_modules/.pnpm/tr46@0.0.3/node_modules/tr46",
+        "to": "node_modules/tr46"
+      },
+      {
+        "from": "../node_modules/.pnpm/opencollective-postinstall@2.0.3/node_modules/opencollective-postinstall",
+        "to": "node_modules/opencollective-postinstall"
+      },
+      {
+        "from": "../node_modules/.pnpm/regenerator-runtime@0.13.11/node_modules/regenerator-runtime",
+        "to": "node_modules/regenerator-runtime"
+      },
+      {
+        "from": "../node_modules/.pnpm/wasm-feature-detect@1.9.0/node_modules/wasm-feature-detect",
+        "to": "node_modules/wasm-feature-detect"
+      },
+      {
+        "from": "../node_modules/.pnpm/zlibjs@0.3.1/node_modules/zlibjs",
+        "to": "node_modules/zlibjs"
+      },
+      {
+        "from": "../artifacts/bsch/dist/public",
+        "to": "public"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "ia32"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "ia32"
+          ]
+        }
+      ],
+      "requestedExecutionLevel": "asInvoker",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "BSCH",
+      "deleteAppDataOnUninstall": false,
+      "license": null
+    },
+    "portable": {
+      "artifactName": "BSCH-Portable-${arch}-${version}.exe"
+    },
+    "artifactName": "BSCH-Setup-${arch}-${version}.exe",
+    "publish": []
+  }
+}

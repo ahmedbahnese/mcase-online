@@ -1,0 +1,66 @@
+# See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
+
+# compiled output
+dist
+tmp
+out-tsc
+*.tsbuildinfo
+.expo
+.expo-shared
+
+# dependencies
+node_modules
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# misc
+/.sass-cache
+/connect.lock
+/coverage
+/libpeerconnection.log
+npm-debug.log
+yarn-error.log
+testem.log
+/typings
+
+# System Files
+.DS_Store
+Thumbs.db
+
+.cursor/rules/nx-rules.mdc
+.github/instructions/nx.instructions.md
+
+# Replit
+.cache/
+.local/
+
+# Deployment secrets and local tunnel configuration
+deploy/windows7/tunnel-config.bat
+deploy/windows7/*.ppk
+deploy/windows7/*.pem
+deploy/windows7/*.key
+
+# Local Electron build output
+electron/dist-electron/
+electron/native/
+releases/BSCH-*.exe
+
+electron/dist-electron/
+electron/native/
+
+.supabase-db-password
+.env.local

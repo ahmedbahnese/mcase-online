@@ -1,0 +1,40 @@
+import { pgTable, serial, integer, text, boolean, timestamp } from "drizzle-orm/pg-core";
+
+/** Internal quality/safety reports. Deliberately separate from incident_reports,
+ * which stores incoming accident and injury cases. */
+export const ovrReportsTable = pgTable("ovr_reports", {
+  id: serial("id").primaryKey(),
+  reportNumber: text("report_number").notNull().unique(),
+  eventDate: timestamp("event_date", { withTimezone: true, mode: "date" }).notNull(),
+  eventTime: text("event_time"),
+  department: text("department").notNull(),
+  location: text("location").notNull(),
+  eventType: text("event_type").notNull(),
+  patientName: text("patient_name"),
+  fileNumber: text("file_number"),
+  hospitalSupervision: text("hospital_supervision"),
+  administrativeManager: text("administrative_manager"),
+  severity: text("severity").notNull().default("no_harm"),
+  description: text("description").notNull(),
+  immediateAction: text("immediate_action"),
+  reporterName: text("reporter_name").notNull(),
+  reporterRole: text("reporter_role"),
+  investigatorName: text("investigator_name"),
+  investigationDate: timestamp("investigation_date", { withTimezone: true, mode: "date" }),
+  status: text("status").notNull().default("new"),
+  investigationSummary: text("investigation_summary"),
+  rootCause: text("root_cause"),
+  correctiveAction: text("corrective_action"),
+  preventiveAction: text("preventive_action"),
+  actionOwner: text("action_owner"),
+  dueDate: timestamp("due_date", { withTimezone: true, mode: "date" }),
+  verificationNotes: text("verification_notes"),
+  reviewedBy: text("reviewed_by"),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true, mode: "date" }),
+  closedBy: text("closed_by"),
+  closedAt: timestamp("closed_at", { withTimezone: true, mode: "date" }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).$defaultFn(() => new Date()).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).$defaultFn(() => new Date()).notNull(),
+});
+
+export type OvrReport = typeof ovrReportsTable.$inferSelect;

@@ -1,0 +1,92 @@
+import { Router, type IRouter } from "express";
+import { count, eq, ne, sql } from "drizzle-orm";
+import { db, departmentsTable, medicalCasesTable, waitingCasesTable, incidentReportsTable, ovrReportsTable } from "@workspace/db";
+import { requirePageAccess } from "../middleware/auth";
+
+const router: IRouter = Router();
+
+router.get("/quality/dashboard", requirePageAccess("/quality-dashboard"), async (req, res): Promise<void> => {
+  const departments = await db.select().from(departmentsTable);
+  const departmentNames = new Map(departments.map(d => [d.id, d.name]));
+  const [total] = await db.select({ count: count() }).from(ovrReportsTable);
+  const [open] = await db.select({ count: count() }).from(ovrReportsTable).where(ne(ovrReportsTable.status, "closed"));
+  const byStatus = await db.select({ status: ovrReportsTable.status, count: count() }).from(ovrReportsTable).groupBy(ovrReportsTable.status);
+  const bySeverity = await db.select({ severity: ovrReportsTable.severity, count: count() }).from(ovrReportsTable).groupBy(ovrReportsTable.severity);
+  const byType = await db.select({ type: ovrReportsTable.eventType, count: count() }).from(ovrReportsTable).groupBy(ovrReportsTable.eventType);
+  const monthlyVisits = await db.select({ month: sql<string>`to_char(${medicalCasesTable.admissionDate}, 'YYYY-MM')`, count: count() }).from(medicalCasesTable).groupBy(sql`to_char(${medicalCasesTable.admissionDate}, 'YYYY-MM')`).orderBy(sql`to_char(${medicalCasesTable.admissionDate}, 'YYYY-MM')`);
+  const departmentVisits = await db.select({ department: medicalCasesTable.departmentId, count: count() }).from(medicalCasesTable).groupBy(medicalCasesTable.departmentId).orderBy(sql`count(*) DESC`);
+  const dischargeByReason = await db.select({ reason: medicalCasesTable.dischargeReason, count: count() }).from(medicalCasesTable).where(eq(medicalCasesTable.status, "discharged")).groupBy(medicalCasesTable.dischargeReason);
+  const dischargeByDepartment = await db.select({ department: medicalCasesTable.departmentId, count: count() }).from(medicalCasesTable).where(eq(medicalCasesTable.status, "discharged")).groupBy(medicalCasesTable.departmentId).orderBy(sql`count(*) DESC`);
+  const respirationDaily = await db.select({ period: sql<string>`to_char(${medicalCasesTable.admissionDate}, 'YYYY-MM-DD')`, count: count() }).from(medicalCasesTable).where(sql`${medicalCasesTable.artificialRespiration} IN ('high_frequency','vent','cpap','hfnc','standby')`).groupBy(sql`to_char(${medicalCasesTable.admissionDate}, 'YYYY-MM-DD')`).orderBy(sql`to_char(${medicalCasesTable.admissionDate}, 'YYYY-MM-DD') DESC`).limit(31);
+  const respirationWeekly = await db.select({ period: sql<string>`to_char(date_trunc('week', ${medicalCasesTable.admissionDate}), 'IYYY-"W"IW')`, count: count() }).from(medicalCasesTable).where(sql`${medicalCasesTable.artificialRespiration} IN ('high_frequency','vent','cpap','hfnc','standby')`).groupBy(sql`to_char(date_trunc('week', ${medicalCasesTable.admissionDate}), 'IYYY-"W"IW')`).orderBy(sql`to_char(date_trunc('week', ${medicalCasesTable.admissionDate}), 'IYYY-"W"IW') DESC`).limit(12);
+  const [overdue] = await db.select({ count: count() }).from(ovrReportsTable).where(sql`${ovrReportsTable.dueDate} IS NOT NULL AND ${ovrReportsTable.dueDate} < now() AND ${ovrReportsTable.status} <> 'closed'`);
+  res.json({ totalOvr: Number(total?.count ?? 0), openOvr: Number(open?.count ?? 0), overdueCapa: Number(overdue?.count ?? 0), byStatus: byStatus.map(r => ({ status: r.status, count: Number(r.count) })), bySeverity: bySeverity.map(r => ({ severity: r.severity, count: Number(r.count) })), byType: byType.map(r => ({ type: r.type, count: Number(r.count) })), monthlyVisits: monthlyVisits.map(r => ({ month: r.month, count: Number(r.count) })), departmentVisits: departmentVisits.map(r => ({ departmentId: r.department, departmentName: departmentNames.get(r.department) ?? "غير محدد", count: Number(r.count) })), dischargeByReason: dischargeByReason.map(r => ({ reason: r.reason ?? "غير محدد", count: Number(r.count) })), dischargeByDepartment: dischargeByDepartment.map(r => ({ departmentName: departmentNames.get(r.department) ?? "غير محدد", count: Number(r.count) })), respirationPeriods: { daily: respirationDaily.map(r => ({ period: r.period, count: Number(r.count) })), weekly: respirationWeekly.map(r => ({ period: r.period, count: Number(r.count) })), monthly: monthlyVisits.map(r => ({ period: r.month, count: Number(r.count) })) } });
+});
+
+router.get("/dashboard/stats", requirePageAccess("/dashboard"), async (req, res): Promise<void> => {
+  const [totalResult] = await db.select({ count: count() }).from(medicalCasesTable);
+  const [activeResult] = await db.select({ count: count() }).from(medicalCasesTable).where(eq(medicalCasesTable.status, "active"));
+  const [criticalResult] = await db.select({ count: count() }).from(medicalCasesTable).where(eq(medicalCasesTable.status, "critical"));
+  const [waitingResult] = await db.select({ count: count() }).from(waitingCasesTable).where(eq(waitingCasesTable.status, "waiting"));
+  const [respirationResult] = await db.select({ count: count() }).from(medicalCasesTable).where(ne(medicalCasesTable.artificialRespiration, "no"));
+
+  const departments = await db.select().from(departmentsTable);
+
+  // Per-department stats
+  const activeCounts = await db
+    .select({ departmentId: medicalCasesTable.departmentId, count: count() })
+    .from(medicalCasesTable)
+    .where(eq(medicalCasesTable.status, "active"))
+    .groupBy(medicalCasesTable.departmentId);
+
+  const criticalCounts = await db
+    .select({ departmentId: medicalCasesTable.departmentId, count: count() })
+    .from(medicalCasesTable)
+    .where(eq(medicalCasesTable.status, "critical"))
+    .groupBy(medicalCasesTable.departmentId);
+
+  const activeMap = new Map(activeCounts.map((r) => [r.departmentId, Number(r.count)]));
+  const criticalMap = new Map(criticalCounts.map((r) => [r.departmentId, Number(r.count)]));
+
+  const departmentStats = departments.map((d) => ({
+    departmentId: d.id,
+    departmentName: d.name,
+    capacity: d.capacity,
+    activeCases: activeMap.get(d.id) ?? 0,
+    criticalCases: criticalMap.get(d.id) ?? 0,
+  }));
+
+  // Respiration breakdown
+  const respCounts = await db
+    .select({ type: medicalCasesTable.artificialRespiration, count: count() })
+    .from(medicalCasesTable)
+    .where(ne(medicalCasesTable.artificialRespiration, "no"))
+    .groupBy(medicalCasesTable.artificialRespiration);
+
+  const respirationLabels: Record<string, string> = {
+    high_frequency: "تردد عالي",
+    vent: "فنت (VENT)",
+    cpap: "سي باب (CPAP)",
+    standby: "استعداد",
+  };
+
+  const respirationBreakdown = respCounts.map((r) => ({
+    type: r.type,
+    count: Number(r.count),
+    label: respirationLabels[r.type] ?? r.type,
+  }));
+
+  const respirationCount = Number(respirationResult?.count ?? 0);
+  res.json({
+    totalCases: Number(totalResult?.count ?? 0),
+    activeCases: Number(activeResult?.count ?? 0),
+    criticalCases: Number(criticalResult?.count ?? 0),
+    waitingCases: Number(waitingResult?.count ?? 0),
+    onRespiration: respirationCount,
+    artificialRespirationCases: respirationCount,
+    departmentStats,
+    respirationBreakdown,
+  });
+});
+
+export default router;

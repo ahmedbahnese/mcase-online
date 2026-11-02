@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>خطأ في التشغيل</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; background: #fef2f2; color: #991b1b;
+    }
+    .box {
+      text-align: center; padding: 2.5rem 2rem;
+      background: white; border-radius: 1rem;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.1); max-width: 480px; width: 90%;
+    }
+    h1 { font-size: 1.4rem; margin-bottom: 1rem; }
+    p  { color: #6b7280; font-size: 0.9rem; line-height: 1.7; margin-bottom: 0.6rem; }
+    .steps {
+      text-align: right; background: #f9fafb; border-radius: 0.5rem;
+      padding: 1rem 1.2rem; margin: 1rem 0;
+      font-size: 0.85rem; color: #374151; line-height: 1.9;
+    }
+    button {
+      margin-top: 1.2rem; padding: 0.6rem 1.8rem;
+      background: #0f766e; color: white; border: none;
+      border-radius: 0.5rem; cursor: pointer; font-size: 1rem;
+      transition: background 0.2s;
+    }
+    button:hover { background: #0d6460; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>⚠️ تعذر الاتصال بالخادم</h1>
+    <p>فشل تشغيل خادم BSCH. تحقق مما يلي:</p>
+    <div class="steps">
+      ✔️ لا تحتاج هذه النسخة إلى MySQL أو PostgreSQL<br>
+      ✔️ قاعدة البيانات المحلية تُنشأ تلقائيًا في مجلد بيانات BSCH<br>
+      ✔️ أغلق أي نسخة قديمة من BSCH ثم أعد المحاولة<br>
+      ✔️ إذا استمر الخطأ، انسخ تفاصيل التشخيص أدناه إلى الدعم<br>
+      <code id="details" style="display:block;margin-top:.6rem;direction:ltr;text-align:left;white-space:pre-wrap;color:#991b1b"></code>
+    </div>
+    <p>بعد التأكد من كل ما سبق، اضغط "إعادة المحاولة".</p>
+    <button onclick="location.reload()">إعادة المحاولة</button>
+    <script>
+      const message = new URLSearchParams(location.search).get('message');
+      if (message) document.getElementById('details').textContent = decodeURIComponent(message);
+    </script>
+  </div>
+</body>
+</html>
