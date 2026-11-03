@@ -2,6 +2,18 @@ import ExcelJS from "exceljs";
 
 type ExcelCell = string | number | boolean | null | undefined;
 
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.rel = "noopener";
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  window.setTimeout(() => { anchor.remove(); URL.revokeObjectURL(url); }, 1500);
+}
+
 export async function exportArabicXlsx(options: {
   filename: string;
   hospitalName: string;
@@ -15,7 +27,7 @@ export async function exportArabicXlsx(options: {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "BSCH";
   workbook.created = now;
-  const sheet = workbook.addWorksheet("البيان", { views: [{ rightToLeft: true, state: "frozen", ySplit: 5 }] });
+  const sheet = workbook.addWorksheet("البيان", { views: [{ rightToLeft: true, state: "frozen", ySplit: 4 }] });
   const last = Math.max(options.columns.length, 1);
   sheet.mergeCells(1, 1, 1, last); sheet.mergeCells(2, 1, 2, last); sheet.mergeCells(3, 1, 3, last);
   sheet.getCell(1, 1).value = options.hospitalName;
@@ -44,7 +56,7 @@ export async function exportArabicXlsx(options: {
     });
   });
   sheet.columns.forEach((column, index) => { column.width = options.columnWidths?.[index] ?? 18; });
-  sheet.autoFilter = { from: { row: 5, column: 1 }, to: { row: Math.max(sheet.rowCount, 5), column: last } };
+  sheet.autoFilter = { from: { row: 4, column: 1 }, to: { row: Math.max(sheet.rowCount, 4), column: last } };
   const safeName = options.filename.toLowerCase().endsWith(".xlsx") ? options.filename : `${options.filename}.xlsx`;
   const esc = (value: ExcelCell) => String(value ?? "").replace(/[&<>\"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[ch]!));
   const overlay = document.createElement("div");
@@ -52,24 +64,31 @@ export async function exportArabicXlsx(options: {
   overlay.setAttribute("aria-modal", "true");
   overlay.style.cssText = "position:fixed;inset:0;z-index:2147483646;background:#111827;padding:12px;display:flex;flex-direction:column;gap:10px";
   const toolbar = document.createElement("div");
-  toolbar.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;color:white;font-family:Tahoma,Arial,sans-serif";
+  toolbar.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;color:white;font-family:Tahoma,Arial,sans-serif;flex-wrap:wrap";
   const title = document.createElement("strong");
   title.textContent = `معاينة Excel قبل الحفظ — ${options.rows.length} سجل`;
   const actions = document.createElement("div");
-  actions.style.cssText = "display:flex;gap:8px";
-  const button = (label: string, color: string) => { const b = document.createElement("button"); b.textContent = label; b.style.cssText = `border:0;border-radius:6px;padding:9px 14px;background:${color};color:white;cursor:pointer;font-weight:bold`; return b; };
+  actions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap";
+  const button = (label: string, color: string) => { const b = document.createElement("button"); b.type = "button"; b.textContent = label; b.style.cssText = `border:0;border-radius:6px;padding:9px 14px;background:${color};color:white;cursor:pointer;font-weight:bold`; return b; };
   const saveButton = button("حفظ XLSX", "#16a34a");
   const printButton = button("طباعة", "#0ea5e9");
   const closeButton = button("إغلاق", "#475569");
   const frame = document.createElement("iframe");
   frame.title = "معاينة جدول Excel";
-  frame.style.cssText = "width:100%;flex:1;border:0;border-radius:6px;background:white";
+  frame.style.cssText = "width:100%;flex:1;min-height:0;border:0;border-radius:6px;background:white";
   const previewRows = options.rows.map(row => `<tr>${row.map(cell => `<td>${esc(cell)}</td>`).join("")}</tr>`).join("");
   const previewDoc = `<!doctype html><html dir="rtl"><head><meta charset="utf-8"><style>body{font-family:Arial,Tahoma,sans-serif;margin:24px;color:#111827}h1,h2,p{text-align:center;margin:6px}p{color:#4b5563}table{border-collapse:collapse;width:100%;min-width:1100px}th{background:#2563eb;color:#fff;font-weight:bold}th,td{border:1px solid #d1d5db;padding:9px;text-align:right;vertical-align:top;white-space:pre-wrap}tr:nth-child(even){background:#f8fafc}@media print{body{margin:0}h1,h2,p{margin:2px}}</style></head><body><h1>${esc(options.hospitalName)}</h1><h2>${esc(options.reportTitle)}</h2><p>${esc(date)} — عدد الحالات: ${options.rows.length}</p><table><thead><tr>${options.columns.map(esc).map(x => `<th>${x}</th>`).join("")}</tr></thead><tbody>${previewRows}</tbody></table></body></html>`;
   frame.srcdoc = previewDoc;
-  saveButton.addEventListener("click", async () => { const buffer = await workbook.xlsx.writeBuffer(); const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = safeName; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); });
-  printButton.addEventListener("click", () => frame.contentWindow?.print());
+  saveButton.addEventListener("click", async () => {
+    try {
+      const buffer = await workbook.xlsx.writeBuffer();
+      downloadBlob(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), safeName);
+    } catch (error) {
+      console.error("Excel export failed", error);
+      alert("تعذر حفظ ملف Excel. حاول مرة أخرى أو استخدم متصفحًا محدثًا.");
+    }
+  });
+  printButton.addEventListener("click", () => { const win = frame.contentWindow; if (win) { win.focus(); win.print(); } else alert("تعذر فتح معاينة Excel."); });
   closeButton.addEventListener("click", () => overlay.remove());
   actions.append(saveButton, printButton, closeButton); toolbar.append(title, actions); overlay.append(toolbar, frame); document.body.appendChild(overlay);
-
 }

@@ -277,6 +277,7 @@ function WaitingCaseActionDialog({
   );
   const [attachments, setAttachments] = useState<any[]>([]);
   const [attachmentCategory, setAttachmentCategory] = useState("xray");
+  const [previewAttachment, setPreviewAttachment] = useState<{ fileName: string; mimeType: string; fileData: string } | null>(null);
   useEffect(() => { void apiGet<any[]>(`/api/waiting-cases/${waitingCase.id}/attachments`).then(setAttachments).catch(() => setAttachments([])); }, [waitingCase.id]);
   const uploadAttachment = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -287,7 +288,25 @@ function WaitingCaseActionDialog({
     event.target.value = "";
   };
   const removeAttachment = async (id: number) => { try { await apiDelete(`/api/waiting-case-attachments/${id}`); setAttachments(items => items.filter(item => item.id !== id)); } catch (error: any) { toast.error(error.message || "فشل حذف المرفق"); } };
-  const openAttachment = async (id: number) => { try { const file = await apiGet<any>(`/api/waiting-case-attachments/${id}/download`); const link = document.createElement("a"); link.href = file.fileData; link.download = file.fileName; link.target = "_blank"; link.click(); } catch (error: any) { toast.error(error.message || "تعذر فتح المرفق"); } };
+  const openAttachment = async (id: number) => {
+    try {
+      const file = await apiGet<any>(`/api/waiting-case-attachments/${id}/download`);
+      if (!file.fileData?.startsWith("data:")) throw new Error("بيانات المرفق غير صالحة");
+      setPreviewAttachment({ fileName: file.fileName, mimeType: file.mimeType || "application/octet-stream", fileData: file.fileData });
+    } catch (error: any) { toast.error(error.message || "تعذر فتح المرفق"); }
+  };
+  const downloadAttachment = async (id: number) => {
+    try {
+      const file = await apiGet<any>(`/api/waiting-case-attachments/${id}/download`);
+      const response = await fetch(file.fileData);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url; link.download = file.fileName; link.rel = "noopener"; link.style.display = "none";
+      document.body.appendChild(link); link.click();
+      window.setTimeout(() => { link.remove(); URL.revokeObjectURL(url); }, 1500);
+    } catch (error: any) { toast.error(error.message || "تعذر تحميل المرفق"); }
+  };
 
   const isPending = update.isPending;
 
@@ -327,6 +346,7 @@ function WaitingCaseActionDialog({
   };
 
   return (
+    <>
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="w-[calc(100%-1rem)] max-w-[calc(100%-1rem)] h-[calc(100dvh-1rem)] max-h-none overflow-y-auto">
         <DialogHeader>
@@ -516,7 +536,7 @@ function WaitingCaseActionDialog({
             <div className="space-y-2 border-t pt-3">
               <Label className="text-xs">المرفقات المتعددة</Label>
               <div className="flex gap-2 flex-wrap"><select className="h-9 rounded-md border bg-background px-2 text-sm" value={attachmentCategory} onChange={e => setAttachmentCategory(e.target.value)}><option value="xray">أشعة</option><option value="lab">تحاليل</option><option value="emergency_front">ورقة طوارئ أمام</option><option value="emergency_back">ورقة طوارئ خلف</option><option value="medical_report">تقرير طبي</option><option value="other">أخرى</option></select><Input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" onChange={uploadAttachment} className="max-w-xs" /></div>
-              <div className="space-y-1">{attachments.map(file => <div key={file.id} className="flex items-center justify-between gap-2 rounded border px-2 py-1 text-xs"><span className="truncate">{file.fileName}</span><div className="flex gap-1"><Button type="button" size="sm" variant="ghost" onClick={() => openAttachment(file.id)}>عرض/تحميل</Button><Button type="button" size="sm" variant="ghost" className="text-destructive" onClick={() => removeAttachment(file.id)}>حذف</Button></div></div>)}{attachments.length === 0 && <p className="text-xs text-muted-foreground">لا توجد مرفقات إضافية بعد</p>}</div>
+              <div className="space-y-1">{attachments.map(file => <div key={file.id} className="flex flex-wrap items-center justify-between gap-2 rounded border px-2 py-1 text-xs"><span className="min-w-0 flex-1 truncate" title={file.fileName}>{file.fileName}</span><div className="flex shrink-0 gap-1"><Button type="button" size="sm" variant="outline" onClick={() => openAttachment(file.id)}>عرض</Button><Button type="button" size="sm" variant="outline" onClick={() => downloadAttachment(file.id)}>تحميل</Button><Button type="button" size="sm" variant="ghost" className="text-destructive" onClick={() => removeAttachment(file.id)}>حذف</Button></div></div>)}{attachments.length === 0 && <p className="text-xs text-muted-foreground">لا توجد مرفقات إضافية بعد</p>}</div>
             </div>
           </div>
         </div>
@@ -534,6 +554,18 @@ function WaitingCaseActionDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    <Dialog open={Boolean(previewAttachment)} onOpenChange={open => { if (!open) setPreviewAttachment(null); }}>
+      <DialogContent className="w-[calc(100%-1rem)] max-w-4xl max-h-[calc(100dvh-1rem)] overflow-hidden p-3 sm:p-5">
+        <DialogHeader><DialogTitle className="truncate pr-6 text-sm">{previewAttachment?.fileName ?? "معاينة المرفق"}</DialogTitle></DialogHeader>
+        {previewAttachment?.mimeType.startsWith("image/") ? (
+          <div className="flex max-h-[calc(100dvh-9rem)] items-center justify-center overflow-auto rounded border bg-white p-2"><img src={previewAttachment.fileData} alt={previewAttachment.fileName} className="max-h-[calc(100dvh-10rem)] max-w-full object-contain" /></div>
+        ) : previewAttachment ? (
+          <iframe title={previewAttachment.fileName} src={previewAttachment.fileData} className="h-[calc(100dvh-10rem)] min-h-[18rem] w-full rounded border bg-white" />
+        ) : null}
+        <DialogFooter><Button type="button" variant="outline" onClick={() => setPreviewAttachment(null)}>إغلاق</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 
