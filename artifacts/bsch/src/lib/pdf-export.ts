@@ -43,12 +43,18 @@ function buildPdfDocument(
 </html>`;
 }
 
-function printFrame(frame: HTMLIFrameElement, onError?: () => void) {
-  const frameWindow = frame.contentWindow;
-  if (!frameWindow) { onError?.(); return; }
-  const print = () => { frameWindow.focus(); frameWindow.print(); };
-  if (frame.contentDocument?.readyState === "complete") window.setTimeout(print, 80);
-  else frame.addEventListener("load", () => window.setTimeout(print, 80), { once: true });
+function openPrintWindow(doc: string, onError?: () => void) {
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) { onError?.(); return; }
+  printWindow.document.open();
+  printWindow.document.write(doc);
+  printWindow.document.close();
+  const print = () => {
+    try { printWindow.focus(); printWindow.print(); }
+    catch { onError?.(); }
+  };
+  if (printWindow.document.readyState === "complete") window.setTimeout(print, 250);
+  else printWindow.addEventListener("load", () => window.setTimeout(print, 250), { once: true });
 }
 
 export function exportPDF(
@@ -89,7 +95,7 @@ export function exportPDF(
   const close = () => backdrop.remove();
   closeButton.addEventListener("click", close);
   backdrop.addEventListener("click", event => { if (event.target === backdrop) close(); });
-  const printToPdf = () => printFrame(frame, () => alert("تعذر فتح معاينة PDF. حاول مرة أخرى."));
+  const printToPdf = () => openPrintWindow(doc, () => alert("تعذر فتح نافذة الطباعة. اسمح بالنوافذ المنبثقة لهذا الموقع ثم حاول مرة أخرى."));
   saveButton.addEventListener("click", printToPdf);
   printButton.addEventListener("click", printToPdf);
 

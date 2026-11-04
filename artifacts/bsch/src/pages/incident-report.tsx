@@ -65,7 +65,15 @@ function incidentHtml(report: ReportForm): string {
 function downloadIncidentWord(report: ReportForm): void {
   const html = `<!doctype html><html dir="rtl"><head><meta charset="utf-8"><style>body{font-family:Arial,Tahoma,sans-serif;direction:rtl;margin:0;color:#000}.report{padding:32px}.header{text-align:center;border-bottom:2px solid #000;padding-bottom:16px;margin-bottom:24px}.details{font-size:14px;line-height:1.8}.cases-title{text-align:center;border:1px solid #000;padding:8px;margin:12px 0 8px}table{border-collapse:collapse;width:100%;font-size:11px;margin-bottom:36px;page-break-inside:auto}thead{display:table-header-group}tr{page-break-inside:avoid}th,td{border:1px solid #000;padding:6px;text-align:right;vertical-align:top}th{background:#f3f4f6}.signatures{display:flex;justify-content:space-between;margin-top:48px;text-align:center;font-size:11px}.signatures div{display:flex;flex-direction:column;min-width:150px}.signatures span{height:24px;border-bottom:1px solid #000;margin-bottom:4px}.signatures small{margin-top:4px}@page{size:A4 portrait;margin:1cm}</style></head><body>${incidentHtml(report)}</body></html>`;
   const blob = new Blob(["\ufeff", html], { type: "application/msword" });
-  const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `بيان-حادث-${report.reportDate || "report"}.doc`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `بيان-حادث-${report.reportDate || "report"}.doc`;
+  a.rel = "noopener";
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1500);
 }
 
 interface ReportForm {
@@ -412,7 +420,7 @@ export default function IncidentReportPage() {
               <FileDown className="h-4 w-4" /> PDF
             </Button>
             <Button variant="outline" className="gap-2" onClick={() => downloadIncidentWord(currentReport)}>
-              <FileText className="h-4 w-4" /> Word
+              <FileText className="h-4 w-4" /> Word قابل للتعديل
             </Button>
           </>}
         </div>
