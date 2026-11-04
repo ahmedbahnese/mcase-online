@@ -3,14 +3,13 @@ import { db, departmentsTable, settingsTable } from "@workspace/db";
 import { logger } from "./logger";
 
 let initialized: Promise<void> | null = null;
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-/**
- * Supabase schema is applied by the committed SQL migration before deploy.
- * This function is intentionally idempotent and only seeds baseline rows.
- */
-export function initDatabase(): Promise<void> {
-  if (!initialized) {
-    initialized = (async () => {
+/** Supabase seed is idempotent, concurrency-safe, and retries transient pooler timeouts. */
+async function seedDatabase(): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
       const [{ value: deptCount }] = await db.select({ value: count() }).from(departmentsTable);
       if (Number(deptCount) === 0) {
         await db.insert(departmentsTable).values([
@@ -20,9 +19,9 @@ export function initDatabase(): Promise<void> {
           { name: "الحاضنات أ", code: "INC-A", description: "وحدة الحاضنات أ", capacity: 15, departmentType: "incubator_a" },
           { name: "الحاضنات ب", code: "INC-B", description: "وحدة الحاضنات ب", capacity: 15, departmentType: "incubator_b" },
           { name: "الحاضنات ج", code: "INC-C", description: "وحدة الحاضنات ج", capacity: 15, departmentType: "incubator_c" },
-        ]);
+        ]).onConflictDoNothing({ target: departmentsTable.code });
       }
-      await db.insert(departmentsTable).values({ name: "الداخلي", code: "INTERNAL", description: "القسم الداخلي", capacity: 24, departmentType: "internal" }).onConflictDoNothing();
+      await db.insert(departmentsTable).values({ name: "الداخلي", code: "INTERNAL", description: "القسم الداخلي", capacity: 24, departmentType: "internal" }).onConflictDoNothing({ target: departmentsTable.code });
       await db.insert(settingsTable).values([
         { key: "hospital_name", value: "مجمع بن صالح الصحي" },
         { key: "hospital_logo", value: null },
@@ -33,9 +32,21 @@ export function initDatabase(): Promise<void> {
         { key: "shift_evening_end", value: "21:00" },
         { key: "shift_night_start", value: "21:00" },
         { key: "shift_night_end", value: "07:00" },
-      ]).onConflictDoNothing();
-      logger.info("PostgreSQL seed completed");
-    })().catch((err) => {
+      ]).onConflictDoNothing({ target: settingsTable.key });
+      logger.info({ attempt }, "PostgreSQL seed completed");
+      return;
+    } catch (error) {
+      lastError = error;
+      logger.warn({ attempt, error }, "PostgreSQL initialization attempt failed; retrying");
+      if (attempt < 3) await sleep(500 * attempt);
+    }
+  }
+  throw lastError;
+}
+
+export function initDatabase(): Promise<void> {
+  if (!initialized) {
+    initialized = seedDatabase().catch((err) => {
       initialized = null;
       logger.error({ err }, "PostgreSQL initialization failed");
       throw err;
