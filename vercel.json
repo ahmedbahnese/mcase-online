@@ -11,7 +11,10 @@
       "root": "artifacts/bsch",
       "framework": "vite",
       "buildCommand": "cd ../.. && pnpm run build:prod",
-      "outputDirectory": "dist/public"
+      "outputDirectory": "dist/public",
+      "rewrites": [
+        { "source": "/(.*)", "destination": "/index.html" }
+      ]
     }
   },
   "rewrites": [
@@ -20,12 +23,8 @@
       "destination": { "service": "api" }
     },
     {
-      "source": "/assets/(.*)",
-      "destination": { "service": "frontend" }
-    },
-    {
       "source": "/(.*)",
-      "destination": { "service": "frontend", "path": "/index.html" }
+      "destination": { "service": "frontend" }
     }
   ],
   "headers": [
