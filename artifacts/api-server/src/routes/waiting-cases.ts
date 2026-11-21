@@ -9,6 +9,7 @@ import {
   DeleteWaitingCaseParams,
 } from "@workspace/api-zod";
 import { logAction } from "./audit-logs";
+import { getPagination } from "../lib/pagination";
 import { getCurrentUserName, requireFounder, requirePageAccess } from "../middleware/auth";
 import { sendAssessmentToConfiguredChannels } from "./messaging";
 
@@ -33,7 +34,9 @@ router.get("/waiting-cases", requirePageAccess("/waiting-cases"), async (req, re
     .select()
     .from(waitingCasesTable)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(waitingCasesTable.createdAt);
+    .orderBy(waitingCasesTable.createdAt, waitingCasesTable.id)
+    .limit(getPagination(req, 50).limit)
+    .offset(getPagination(req, 50).offset);
 
   res.json(cases);
 });

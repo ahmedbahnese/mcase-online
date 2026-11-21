@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { createWorker } from "tesseract.js";
-import { eq, and, like, ne, SQL } from "drizzle-orm";
+import { eq, and, desc, like, ne, SQL } from "drizzle-orm";
 import { db, medicalCasesTable, departmentsTable, waitingCasesTable } from "@workspace/db";
 import {
   GetCasesQueryParams,
@@ -20,6 +20,7 @@ import {
 } from "@workspace/api-zod";
 import { logAction } from "./audit-logs";
 import { getCurrentUserName, requireFounder, requireAnyPageAccess, requirePageAccess } from "../middleware/auth";
+import { getPagination } from "../lib/pagination";
 
 const router: IRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -62,7 +63,8 @@ router.get("/cases/respiration", requirePageAccess("/artificial-respiration"), a
     .select()
     .from(medicalCasesTable)
     .where(and(...conditions))
-    .orderBy(medicalCasesTable.admissionDate);
+    .orderBy(desc(medicalCasesTable.admissionDate), desc(medicalCasesTable.id))
+    .limit(getPagination(req, 50).limit);
 
   const departments = await db.select().from(departmentsTable);
   const deptMap = new Map(departments.map((d) => [d.id, d.name]));
@@ -108,7 +110,9 @@ router.get("/cases", requireAnyPageAccess(["/dashboard", "/add-case", "/waiting-
     .select()
     .from(medicalCasesTable)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(medicalCasesTable.admissionDate);
+    .orderBy(desc(medicalCasesTable.admissionDate), desc(medicalCasesTable.id))
+    .limit(getPagination(req, 50).limit)
+    .offset(getPagination(req, 50).offset);
 
   const departments = await db.select().from(departmentsTable);
   const deptMap = new Map(departments.map((d) => [d.id, d.name]));

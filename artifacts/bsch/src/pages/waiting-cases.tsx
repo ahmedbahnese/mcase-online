@@ -32,6 +32,7 @@ import { ReportWatermark } from "@/components/report-watermark";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
+import { readAndCompressFile } from "@/lib/file-compression";
 
 type Section = "reception" | "servo";
 
@@ -203,14 +204,12 @@ function AddForm({ section, onSuccess }: { section: Section; onSuccess: () => vo
               <Input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" capture="environment" onChange={async e => {
                 const file = e.target.files?.[0];
                 if (!file) return;
-                if (file.size > 10 * 1024 * 1024) { toast.error("حجم ورقة الطوارئ أكبر من 10MB"); return; }
-                const data = await new Promise<string>((resolve, reject) => {
-                  const reader = new FileReader();
-                  reader.onload = () => resolve(String(reader.result));
-                  reader.onerror = reject;
-                  reader.readAsDataURL(file);
-                });
-                setReportFile({ name: file.name, data });
+                try {
+                  const compressed = await readAndCompressFile(file);
+                  setReportFile({ name: compressed.name, data: compressed.data });
+                } catch (error: any) {
+                  toast.error(error?.message ?? "تعذر تجهيز الملف");
+                }
               }} />
               {reportFile && <div className="space-y-2 rounded-md border bg-muted/20 p-2">
                 <div className="flex items-center justify-between gap-2"><p className="text-xs text-muted-foreground truncate">{reportFile.name}</p><Button type="button" size="sm" variant="ghost" className="text-destructive" onClick={() => setReportFile(null)}>حذف المرفق</Button></div>
@@ -282,9 +281,14 @@ function WaitingCaseActionDialog({
   const uploadAttachment = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    if (file.size > 12 * 1024 * 1024) { toast.error("حجم الملف أكبر من 12MB"); return; }
-    const fileData = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(file); });
-    try { const created = await apiPost<any>(`/api/waiting-cases/${waitingCase.id}/attachments`, { category: attachmentCategory, fileName: file.name, mimeType: file.type, fileData }); setAttachments(items => [...items, created]); toast.success("تم رفع المرفق"); } catch (error: any) { toast.error(error.message || "فشل رفع المرفق"); }
+    try {
+      const compressed = await readAndCompressFile(file);
+      const created = await apiPost<any>(`/api/waiting-cases/${waitingCase.id}/attachments`, { category: attachmentCategory, fileName: compressed.name, mimeType: compressed.mimeType, fileData: compressed.data });
+      setAttachments(items => [...items, created]);
+      toast.success("تم ضغط ورفع المرفق");
+    } catch (error: any) {
+      toast.error(error?.message || "فشل تجهيز المرفق");
+    }
     event.target.value = "";
   };
   const removeAttachment = async (id: number) => { try { await apiDelete(`/api/waiting-case-attachments/${id}`); setAttachments(items => items.filter(item => item.id !== id)); } catch (error: any) { toast.error(error.message || "فشل حذف المرفق"); } };
@@ -519,14 +523,12 @@ function WaitingCaseActionDialog({
               <Input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" capture="environment" onChange={async e => {
                 const file = e.target.files?.[0];
                 if (!file) return;
-                if (file.size > 10 * 1024 * 1024) { toast.error("حجم ورقة الطوارئ أكبر من 10MB"); return; }
-                const data = await new Promise<string>((resolve, reject) => {
-                  const reader = new FileReader();
-                  reader.onload = () => resolve(String(reader.result));
-                  reader.onerror = reject;
-                  reader.readAsDataURL(file);
-                });
-                setReportFile({ name: file.name, data });
+                try {
+                  const compressed = await readAndCompressFile(file);
+                  setReportFile({ name: compressed.name, data: compressed.data });
+                } catch (error: any) {
+                  toast.error(error?.message ?? "تعذر تجهيز الملف");
+                }
               }} />
               {reportFile && <div className="space-y-2 rounded-md border bg-muted/20 p-2">
                 <div className="flex items-center justify-between gap-2"><p className="text-xs text-muted-foreground truncate">{reportFile.name}</p><Button type="button" size="sm" variant="ghost" className="text-destructive" onClick={() => setReportFile(null)}>حذف المرفق</Button></div>

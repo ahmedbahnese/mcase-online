@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { desc, lt, sql } from "drizzle-orm";
 import { db, auditLogsTable } from "@workspace/db";
 import { getCurrentUserName, requireFounder } from "../middleware/auth";
+import { getPagination } from "../lib/pagination";
 
 const router: IRouter = Router();
 
@@ -9,12 +10,13 @@ router.get("/audit-logs", requireFounder, async (req, res): Promise<void> => {
   await db.delete(auditLogsTable).where(
     lt(auditLogsTable.createdAt, sql`now() - interval '30 days'`),
   );
-  const limit = parseInt((req.query.limit as string) ?? "100", 10);
+  const { limit, offset } = getPagination(req, 50);
   const logs = await db
     .select()
     .from(auditLogsTable)
-    .orderBy(desc(auditLogsTable.createdAt))
-    .limit(Math.min(limit, 500));
+    .orderBy(desc(auditLogsTable.createdAt), desc(auditLogsTable.id))
+    .limit(limit)
+    .offset(offset);
   res.json(logs);
 });
 

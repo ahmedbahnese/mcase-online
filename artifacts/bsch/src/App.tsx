@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Route, Switch, Router as WouterRouter, useLocation, Redirect } from 'wouter';
 import { useGetMe } from '@workspace/api-client-react';
 import { SettingsProvider } from '@/contexts/settings-context';
+import { Skeleton } from '@/components/ui/skeleton';
 
 import { Layout } from '@/components/layout';
 import Login from '@/pages/login';
@@ -28,7 +29,29 @@ import OutpatientReports from '@/pages/outpatient-reports';
 import PatientQueuePortal from '@/pages/patient-queue-portal';
 import HospitalSite from '@/pages/hospital-site';
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      gcTime: 5 * 60_000,
+      retry: 2,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
+function AppLoadingState() {
+  return (
+    <main className="min-h-screen bg-background p-4 sm:p-8" dir="rtl">
+      <div className="mx-auto max-w-6xl space-y-4">
+        <Skeleton className="h-10 w-48" />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map(item => <Skeleton key={item} className="h-24 rounded-xl" />)}
+        </div>
+        <Skeleton className="h-72 w-full rounded-xl" />
+      </div>
+    </main>
+  );
+}
 
 function NotFound() {
   return (
@@ -57,7 +80,7 @@ function hasPageAccess(user: any, href?: string, founderOnly = false) {
 function ProtectedRoute({ component: Component, pageHref, founderOnly = false }: { component: React.ComponentType; pageHref?: string; founderOnly?: boolean }) {
   const { data: user, isLoading } = useGetMe();
 
-  if (isLoading) return <div className="h-screen bg-background" />;
+  if (isLoading) return <AppLoadingState />;
   if (!user?.isAuthenticated) return <Redirect to="/" />;
   if (!hasPageAccess(user, pageHref, founderOnly)) return <Layout><AccessDenied /></Layout>;
 
@@ -72,7 +95,7 @@ function Router() {
   const { data: user, isLoading } = useGetMe();
   const [location] = useLocation();
 
-  if (isLoading) return <div className="h-screen bg-background" />;
+  if (isLoading) return <AppLoadingState />;
 
   if (user?.isAuthenticated && location === '/') {
     return <Redirect to={user.isFounder ? "/dashboard" : ((user as any).startPage || "/dashboard")} />;

@@ -4,10 +4,11 @@ import { db, backupsTable, medicalCasesTable, waitingCasesTable } from "@workspa
 import { CreateBackupBody } from "@workspace/api-zod";
 import { count } from "drizzle-orm";
 import { requireFounder } from "../middleware/auth";
+import { getPagination } from "../lib/pagination";
 
 const router: IRouter = Router();
 
-router.get("/backups", requireFounder, async (_req, res): Promise<void> => {
+router.get("/backups", requireFounder, async (req, res): Promise<void> => {
   const backups = await db
     .select({
       id: backupsTable.id,
@@ -16,7 +17,9 @@ router.get("/backups", requireFounder, async (_req, res): Promise<void> => {
       createdAt: backupsTable.createdAt,
     })
     .from(backupsTable)
-    .orderBy(backupsTable.createdAt);
+    .orderBy(backupsTable.createdAt, backupsTable.id)
+    .limit(getPagination(req, 50).limit)
+    .offset(getPagination(req, 50).offset);
 
   res.json(backups);
 });

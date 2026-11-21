@@ -2,14 +2,17 @@ import { Router } from "express";
 import { and, asc, eq } from "drizzle-orm";
 import { db, waitingAttachmentsTable, waitingCasesTable } from "@workspace/db";
 import { getCurrentUserName, requirePageAccess } from "../middleware/auth";
+import { getPagination } from "../lib/pagination";
 
 const router = Router();
 const categories = new Set(["xray", "lab", "emergency_front", "emergency_back", "medical_report", "other"]);
+const allowedMimeTypes = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
 
 router.get("/waiting-cases/:id/attachments", requirePageAccess("/waiting-cases"), async (req, res) => {
   const caseId = Number(req.params.id);
   if (!Number.isInteger(caseId)) { res.status(400).json({ error: "معرف الحالة غير صالح" }); return; }
-  const files = await db.select({ id: waitingAttachmentsTable.id, waitingCaseId: waitingAttachmentsTable.waitingCaseId, category: waitingAttachmentsTable.category, fileName: waitingAttachmentsTable.fileName, mimeType: waitingAttachmentsTable.mimeType, isCurrent: waitingAttachmentsTable.isCurrent, uploadedBy: waitingAttachmentsTable.uploadedBy, createdAt: waitingAttachmentsTable.createdAt }).from(waitingAttachmentsTable).where(eq(waitingAttachmentsTable.waitingCaseId, caseId)).orderBy(asc(waitingAttachmentsTable.createdAt));
+  const { limit, offset } = getPagination(req, 50);
+  const files = await db.select({ id: waitingAttachmentsTable.id, waitingCaseId: waitingAttachmentsTable.waitingCaseId, category: waitingAttachmentsTable.category, fileName: waitingAttachmentsTable.fileName, mimeType: waitingAttachmentsTable.mimeType, isCurrent: waitingAttachmentsTable.isCurrent, uploadedBy: waitingAttachmentsTable.uploadedBy, createdAt: waitingAttachmentsTable.createdAt }).from(waitingAttachmentsTable).where(eq(waitingAttachmentsTable.waitingCaseId, caseId)).orderBy(asc(waitingAttachmentsTable.createdAt), asc(waitingAttachmentsTable.id)).limit(limit).offset(offset);
   res.json(files);
 });
 
@@ -20,7 +23,7 @@ router.post("/waiting-cases/:id/attachments", requirePageAccess("/waiting-cases"
   const fileData = String(body.fileData ?? "");
   const fileName = String(body.fileName ?? "").trim();
   const mimeType = String(body.mimeType ?? "application/octet-stream");
-  if (!Number.isInteger(caseId) || !categories.has(category) || !fileName || !fileData.startsWith("data:")) { res.status(400).json({ error: "بيانات المرفق غير مكتملة" }); return; }
+  if (!Number.isInteger(caseId) || !categories.has(category) || !fileName || !fileData.startsWith("data:") || !allowedMimeTypes.has(mimeType)) { res.status(400).json({ error: "بيانات المرفق أو نوعه غير صالح" }); return; }
   if (fileData.length > 18 * 1024 * 1024) { res.status(413).json({ error: "حجم المرفق أكبر من الحد المسموح" }); return; }
   const [waitingCase] = await db.select({ id: waitingCasesTable.id }).from(waitingCasesTable).where(eq(waitingCasesTable.id, caseId));
   if (!waitingCase) { res.status(404).json({ error: "الحالة غير موجودة" }); return; }

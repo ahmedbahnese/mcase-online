@@ -3,12 +3,17 @@ import { eq, desc } from "drizzle-orm";
 import { db, incidentReportsTable, waitingCasesTable } from "@workspace/db";
 import { logAction } from "./audit-logs";
 import { getCurrentUserName, getCurrentUserAccess, requirePageAccess } from "../middleware/auth";
+import { getPagination } from "../lib/pagination";
 
 const router: IRouter = Router();
 
 router.get("/incident-reports", requirePageAccess("/incident-report"), async (req, res): Promise<void> => {
   await getCurrentUserAccess(req.headers.cookie);
-  const reports = await db.select().from(incidentReportsTable).orderBy(desc(incidentReportsTable.createdAt));
+  const { limit, offset } = getPagination(req, 50);
+  const reports = await db.select().from(incidentReportsTable)
+    .orderBy(desc(incidentReportsTable.createdAt), desc(incidentReportsTable.id))
+    .limit(limit)
+    .offset(offset);
   res.json(reports.map(r => ({ ...r, cases: JSON.parse(r.casesJson ?? "[]") })));
 });
 

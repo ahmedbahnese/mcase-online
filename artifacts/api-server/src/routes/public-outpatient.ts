@@ -35,7 +35,7 @@ async function lookup(token: string) {
   if (appointment.publicTokenExpiresAt && appointment.publicTokenExpiresAt.getTime() < Date.now()) return { expired: true } as const;
   const [clinic] = await db.select().from(outpatientClinicsTable).where(eq(outpatientClinicsTable.id, appointment.clinicId));
   if (!clinic) return null;
-  const all = await db.select().from(outpatientAppointmentsTable).where(and(eq(outpatientAppointmentsTable.clinicId, appointment.clinicId), eq(outpatientAppointmentsTable.appointmentDate, appointment.appointmentDate))).orderBy(asc(outpatientAppointmentsTable.queueNumber));
+  const all = await db.select().from(outpatientAppointmentsTable).where(and(eq(outpatientAppointmentsTable.clinicId, appointment.clinicId), eq(outpatientAppointmentsTable.appointmentDate, appointment.appointmentDate))).orderBy(asc(outpatientAppointmentsTable.queueNumber), asc(outpatientAppointmentsTable.id)).limit(100);
   return publicPayload(appointment, clinic, all);
 }
 

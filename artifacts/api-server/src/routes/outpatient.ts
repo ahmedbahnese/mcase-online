@@ -4,6 +4,7 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { db, auditLogsTable, outpatientAppointmentsTable, outpatientClinicExceptionsTable, outpatientClinicsTable } from "@workspace/db";
 import { requireAnyPageAccess, requireFounder, requirePageAccess, requireOutpatientRole, getCurrentUserName } from "../middleware/auth";
 import { notifyPublicQueue } from "./public-outpatient";
+import { getPagination } from "../lib/pagination";
 
 const router = Router();
 const PAGE = "/outpatient-clinics";
@@ -30,7 +31,8 @@ function clinicPayload(body: any) {
 router.get("/outpatient/clinics", requireAnyPageAccess([PAGE], "view"), async (req, res) => {
   const date = typeof req.query.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date) ? req.query.date : new Date().toISOString().slice(0, 10);
   const clinics = await db.select().from(outpatientClinicsTable).orderBy(asc(outpatientClinicsTable.name));
-  const appointments = await db.select().from(outpatientAppointmentsTable).where(eq(outpatientAppointmentsTable.appointmentDate, date)).orderBy(asc(outpatientAppointmentsTable.queueNumber));
+  const { limit, offset } = getPagination(req, 100);
+  const appointments = await db.select().from(outpatientAppointmentsTable).where(eq(outpatientAppointmentsTable.appointmentDate, date)).orderBy(asc(outpatientAppointmentsTable.queueNumber), asc(outpatientAppointmentsTable.id)).limit(limit).offset(offset);
   res.json(clinics.map(clinic => {
     const clinicAppointments = appointments.filter(item => item.clinicId === clinic.id);
     return { ...clinic, date, appointmentsCount: clinicAppointments.filter(item => item.status !== "cancelled").length, waitingCount: clinicAppointments.filter(item => ["waiting", "called", "in_service"].includes(item.status)).length, appointments: clinicAppointments };
@@ -83,7 +85,7 @@ router.post("/outpatient/appointments", requirePageAccess(PAGE, "edit"), require
   const duplicateConditions = [eq(outpatientAppointmentsTable.clinicId, clinicId), eq(outpatientAppointmentsTable.appointmentDate, date), sql`${outpatientAppointmentsTable.status} not in ('cancelled','no_show')`];
   if (body.phone) duplicateConditions.push(eq(outpatientAppointmentsTable.phone, String(body.phone).trim()) as any);
   if (body.nationalId) duplicateConditions.push(eq(outpatientAppointmentsTable.nationalId, String(body.nationalId).trim()) as any);
-  const duplicates = await db.select().from(outpatientAppointmentsTable).where(and(...duplicateConditions as any));
+  const duplicates = await db.select({ id: outpatientAppointmentsTable.id }).from(outpatientAppointmentsTable).where(and(...duplicateConditions as any)).limit(1);
   if (duplicates.length) { res.status(409).json({ error: "يوجد حجز مشابه لهذه الحالة في نفس العيادة والتاريخ", duplicates }); return; }
   const [{ activeCount }] = await db.select({ activeCount: sql<number>`count(*)` }).from(outpatientAppointmentsTable).where(and(eq(outpatientAppointmentsTable.clinicId, clinicId), eq(outpatientAppointmentsTable.appointmentDate, date), sql`${outpatientAppointmentsTable.status} not in ('cancelled','no_show')`));
   if (Number(activeCount) >= clinic.dailyCapacity) { res.status(409).json({ error: "تم الوصول إلى السعة اليومية لهذه العيادة" }); return; }

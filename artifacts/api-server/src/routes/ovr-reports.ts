@@ -3,6 +3,7 @@ import { and, desc, eq, gte, lte, like, or } from "drizzle-orm";
 import { db, ovrReportsTable } from "@workspace/db";
 import { logAction } from "./audit-logs";
 import { getCurrentUserAccess } from "../middleware/auth";
+import { getPagination } from "../lib/pagination";
 
 const router: IRouter = Router();
 const canReview = (a: Awaited<ReturnType<typeof getCurrentUserAccess>>) => a.isFounder || a.canReviewOvr;
@@ -29,9 +30,12 @@ router.get("/ovr-reports", async (req, res) => {
         like(ovrReportsTable.description, `%${q}%`),
       ) : undefined,
     ].filter(Boolean) as any[];
+    const { limit, offset } = getPagination(req, 50);
     const reports = await db.select().from(ovrReportsTable)
       .where(filters.length ? and(...filters) : undefined)
-      .orderBy(desc(ovrReportsTable.createdAt));
+      .orderBy(desc(ovrReportsTable.createdAt), desc(ovrReportsTable.id))
+      .limit(limit)
+      .offset(offset);
     res.json(reports);
   } catch (error) {
     console.error("OVR list failed", error);

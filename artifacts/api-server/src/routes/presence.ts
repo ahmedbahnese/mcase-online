@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { desc, eq } from "drizzle-orm";
 import { db, notificationsTable, settingsTable } from "@workspace/db";
 import { getCurrentUserName, requireFounder } from "../middleware/auth";
+import { getPagination } from "../lib/pagination";
 
 const router: IRouter = Router();
 type Presence = { name: string; lastSeen: number; isFounder: boolean };
@@ -39,7 +40,8 @@ router.get("/notifications", async (req, res): Promise<void> => {
   const user = getCurrentUserName(req.headers.cookie);
   const since = Number(req.query.since ?? 0);
   const history = req.query.history === "1" && user === "المؤسس";
-  const rows = await db.select().from(notificationsTable).orderBy(desc(notificationsTable.id)).limit(history ? 500 : 200);
+  const { limit, offset } = getPagination(req, history ? 50 : 20);
+  const rows = await db.select().from(notificationsTable).orderBy(desc(notificationsTable.id)).limit(limit).offset(offset);
   const visible = rows.filter(row => history || (row.id > since && jsonArray(row.recipientsJson).includes(user))).reverse();
   res.json(visible.map(row => ({ ...row, from: row.fromUser, recipients: jsonArray(row.recipientsJson), readBy: jsonArray(row.readByJson) })));
 });

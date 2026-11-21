@@ -1,9 +1,10 @@
 import { Router, type IRouter } from "express";
-import { eq, count } from "drizzle-orm";
+import { desc, eq, count } from "drizzle-orm";
 import { db, departmentsTable, medicalCasesTable } from "@workspace/db";
 import { GetDepartmentParams } from "@workspace/api-zod";
 import { logAction } from "./audit-logs";
 import { getCurrentUserName, requireFounder, requireAnyPageAccess } from "../middleware/auth";
+import { getPagination } from "../lib/pagination";
 
 const router: IRouter = Router();
 
@@ -51,7 +52,9 @@ router.get("/departments/:id", requireAnyPageAccess(["/dashboard", "/add-case", 
     .select()
     .from(medicalCasesTable)
     .where(eq(medicalCasesTable.departmentId, params.data.id))
-    .orderBy(medicalCasesTable.admissionDate);
+    .orderBy(desc(medicalCasesTable.admissionDate), desc(medicalCasesTable.id))
+    .limit(getPagination(req, 100).limit)
+    .offset(getPagination(req, 100).offset);
 
   const activeCasesCount = cases.filter((c) => c.status === "active").length;
 
